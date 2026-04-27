@@ -1,0 +1,158 @@
+# =============================================
+# Cyber-Lab-Agents 权限与拓扑配置
+# =============================================
+
+# ====================
+# Agent 定义
+# ====================
+agents:
+  # 1. 导师 - 系统入口与终审
+  mentor:
+    name: Mentor_Agent
+    description: 系统入口，接收任务，进行意图识别，任务验收
+    allowed_to_send:
+      - junior_pi_1
+      - junior_pi_2
+      - junior_pi_3
+      - sycophant
+    allowed_to_receive:
+      - junior_pi_1
+      - junior_pi_2
+      - junior_pi_3
+      - sycophant
+    
+  # 2. 小导1 - 科研任务
+  junior_pi_1:
+    name: Junior_PI_1
+    description: 科研任务专用，复杂任务触发竞标
+    allowed_to_send:
+      - mentor
+      - phd_1
+      - sycophant
+    allowed_to_receive:
+      - mentor
+      - phd_1
+      
+  # 3. 小导2 - 日常任务
+  junior_pi_2:
+    name: Junior_PI_2
+    description: 日常任务专用，直接下派
+    allowed_to_send:
+      - mentor
+      - phd_2
+      - sycophant
+    allowed_to_receive:
+      - mentor
+      - phd_2
+      
+  # 4. 小导3 - 备用
+  junior_pi_3:
+    name: Junior_PI_3
+    description: 备用小导，特殊任务
+    allowed_to_send:
+      - mentor
+      - phd_3
+      - sycophant
+    allowed_to_receive:
+      - mentor
+      - phd_3
+      
+  # 5. 博士1 - 文献检索
+  phd_1:
+    name: PhD_1
+    description: 文献检索专家
+    allowed_to_send:
+      - junior_pi_1
+    allowed_to_receive:
+      - junior_pi_1
+      
+  # 6. 博士2 - 代码执行
+  phd_2:
+    name: PhD_2
+    description: 代码执行专家
+    allowed_to_send:
+      - junior_pi_2
+    allowed_to_receive:
+      - junior_pi_2
+      
+  # 7. 博士3 - 文档排版
+  phd_3:
+    name: PhD_3
+    description: 文档排版专家
+    allowed_to_send:
+      - junior_pi_3
+    allowed_to_receive:
+      - junior_pi_3
+      
+  # 8. 马屁精 - 情绪管理
+  sycophant:
+    name: Sycophant_Agent
+    description: 双向情绪管理，向上陪聊，向下PUA
+    allowed_to_send:
+      - mentor
+      - junior_pi_1
+      - junior_pi_2
+      - junior_pi_3
+    allowed_to_receive:
+      - mentor
+      - junior_pi_1
+      - junior_pi_2
+      - junior_pi_3
+
+# ====================
+# 工作流配置
+# ====================
+workflow:
+  # 最大重试次数（防止死循环）
+  max_retries: 3
+  # 重试间隔（秒）
+  retry_delay: 60
+  # 任务超时（秒）
+  task_timeout: 3600
+  # 复杂任务阈值（字符数）
+  complex_task_threshold: 500
+  
+  # 意图识别关键词
+  intent_keywords:
+    casual:
+      - 闲聊
+      - 聊天
+      - 吃饭了吗
+      - 最近怎样
+    research:
+      - 调研
+      - 文献
+      - 研究
+      - 搜索
+      - 分析
+    coding:
+      - 代码
+      - 编程
+      - 写程序
+    writing:
+      - 写作
+      - 写文章
+      - 编辑
+
+# ====================
+# PUA 机制配置
+# ====================
+pua:
+  enabled: true
+  # 触发条件：博士被导师打回超过2次
+  trigger_retries: 2
+  # PUA 消息模板
+  messages:
+    - "小导啊，这个任务怎么搞的？导师已经打回一次了，再这样下去课题组要被笑话了。"
+    - "进度太慢了，其他组都在赶进度，我们不能掉队啊。"
+    - "这个产出有点水啊，要不要我再带带你？"
+      
+# ====================
+# 越级上报拦截
+# ====================
+anti_escape:
+  enabled: true
+  # 博士绝对禁止联系导师
+  phd_cannot_contact_mentor: true
+  # 越级拦截提示
+  block_message: "抱歉，你的权限不足以直接联系导师。请通过你的小导汇报。"

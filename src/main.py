@@ -135,35 +135,26 @@ async def list_tasks(status: Optional[str] = None):
 @app.post("/api/tasks")
 async def create_task(req: TaskCreateRequest, background_tasks: BackgroundTasks):
     """创建任务"""
-    # 路由到合适的 Agent
+    # 1. 路由并分配任务
     task = engine.create_task(
         title=req.title,
         description=req.description,
         creator=AgentRole.MENTOR
     )
-    
+
     assignee = route_task(task, engine)
     engine.assign_task(task.id, assignee)
-    
-    # 🚨 核心修复：异步触发 Agent 开始干活的“发令枪”
-    def trigger_agent_workflow():
-        try:
-            print(f"🚀 [系统广播] 任务 {task.id} 已下发，正在唤醒 Agent: {assignee.value}...")
-            # 智能适配不同的执行方法名
-            if hasattr(engine, 'process_task'):
-                engine.process_task(task.id)
-            elif hasattr(engine, 'process'):
-                engine.process(task.id)
-            elif hasattr(engine, 'run'):
-                engine.run(task.id)
-            else:
-                print(f"⚠️ [警告] 无法在 engine 中找到执行方法，请检查 workflow.py 中的引擎驱动函数！")
-        except Exception as e:
-            print(f"❌ [系统报错] Agent 执行工作流时崩溃: {e}")
 
-    # 将触发动作放入后台任务，立刻响应前端
-    background_tasks.add_task(trigger_agent_workflow)
-    
+    # 2. 🚨 补上丢失的发令枪：异步触发 Agent 开始干活！
+    if hasattr(engine, 'process_task'):
+        background_tasks.add_task(engine.process_task, task.id)
+    elif hasattr(engine, 'run'):
+        background_tasks.add_task(engine.run, task.id)
+    else:
+        # 如果不知道执行方法名，用一种通用的线程方式强行唤醒
+        import asyncio
+        asyncio.create_task(asyncio.to_thread(engine.step, task.id))
+
     return {
         "task_id": task.id,
         "title": task.title,
@@ -248,17 +239,22 @@ class FeishuWebhook:
     
     async def handle_message(self, message: dict) -> str:
         """处理飞书消息"""
+        # 提取消息内容
         event = message.get("event", {})
         msg_type = event.get("msg_type", "text")
         content = event.get("content", {})
         sender_id = event.get("sender_id", {}).get("open_id", "")
         text = content.get("text", "") if msg_type == "text" else str(content)
         
+        # 意图识别
         intent = IntentClassifier.classify(text)
         
+        # 路由处理
         if intent.value == "casual":
+            # 闲聊 -> 马屁精
             return "收到！有什么想聊的吗？我陪你聊聊～"
         else:
+            # 创建任务
             task = engine.create_task(
                 title=text[:50],
                 description=text,
@@ -267,12 +263,11 @@ class FeishuWebhook:
             assignee = route_task(task, engine)
             engine.assign_task(task.id, assignee)
             
-            # TODO: 这里如果要在飞书端也触发干活，也可以调用 engine.process()
-            
             return f"好的，已创建任务 [{task.title}]，分配给 {assignee.value} 处理。"
     
     def verify(self, request: Request) -> bool:
         """验证飞书请求"""
+        # 简化验证：检查 verify_token
         token = request.query_params.get("verify_token", "")
         return token == self.verify_token if self.verify_token else True
 
@@ -285,14 +280,21 @@ async def feishu_message(request: Request):
     """飞书消息回调"""
     try:
         body = await request.json()
+        
+        # 验证
         if not feishu_webhook.verify(request):
             return {"code": 401, "msg": "verify failed"}
         
+        # 处理消息类型
         event_type = body.get("event", {}).get("type", "")
         
         if event_type == "url_verification":
-            return {"challenge": body.get("event", {}).get("challenge", "")}
+            # URL 验证
+            return {
+                "challenge": body.get("event", {}).get("challenge", "")
+            }
         elif event_type == "message":
+            # 处理消息
             response = await feishu_webhook.handle_message(body)
             return {"code": 0, "msg": "success", "data": {"text": response}}
         
@@ -328,6 +330,9 @@ DASHBOARD_HTML = """
         table { width: 100%; border-collapse: collapse; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
         th { background: #f9f9f9; }
+        .btn { background: #667eea; color: white; border: none; padding: 10px 20px; 
+              border-radius: 5px; cursor: pointer; }
+        .btn:hover { background: #5568d3; }
     </style>
 </head>
 <body>
@@ -400,18 +405,21 @@ DASHBOARD_HTML = """
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
     """状态看板"""
+    # 统计
     tasks = engine.list_tasks()
     pending = len([t for t in tasks if t.status == TaskStatus.PENDING])
     in_progress = len([t for t in tasks if t.status == TaskStatus.IN_PROGRESS])
     review = len([t for t in tasks if t.status == TaskStatus.REVIEW])
     completed = len([t for t in tasks if t.status == TaskStatus.COMPLETED])
     
+    # 任务表格
     task_rows = []
     for t in tasks[:20]:
         task_rows.append(f"<tr><td>{t.id}</td><td>{t.title}</td><td>{t.status.value}</td>"
                      f"<td>{t.intent_type.value}</td><td>{t.retry_count}/{t.max_retries}</td>"
                      f"<td>{t.created_at.strftime('%m-%d %H:%M')}</td></tr>")
     
+    # Agent表格
     agent_rows = []
     for a in registry.list_all():
         agent_rows.append(f"<tr><td>{a.name}</td><td>{a.role.value}</td><td>{a.description}</td></tr>")

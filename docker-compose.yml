@@ -1,0 +1,43 @@
+# =============================================
+# Cyber-Lab-Agents Docker Compose
+# =============================================
+
+version: '3.8'
+
+services:
+  cyber-lab-agents:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: cyber-lab-agents
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=production
+      - DEBUG=false
+    volumes:
+      - ./data:/app/data
+      - ./memory_bank:/app/memory_bank
+      - ./config:/app/config
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 可选：MongoDB 用于生产环境（轻量模式可跳过）
+  # mongodb:
+  #   image: mongo:7.0
+  #   container_name: cyber-lab-mongodb
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   restart: unless-stopped
+
+# volumes:
+#   mongodb_data:
